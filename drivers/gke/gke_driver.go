@@ -89,6 +89,8 @@ type state struct {
 	EnableStackdriverMonitoring *bool
 	MaintenanceWindow           string
 
+	ResourceLabels map[string]string
+
 	// cluster info
 	ClusterInfo types.ClusterInfo
 }
@@ -230,6 +232,7 @@ func getStateFromOpts(driverOptions *types.DriverOptions) (state, error) {
 		ClusterInfo: types.ClusterInfo{
 			Metadata: map[string]string{},
 		},
+		ResourceLabels: map[string]string{},
 	}
 	d.Name = options.GetValueFromDriverOptions(driverOptions, types.StringType, "name").(string)
 	d.DisplayName = options.GetValueFromDriverOptions(driverOptions, types.StringType, "display-name", "displayName").(string)
@@ -264,9 +267,13 @@ func getStateFromOpts(driverOptions *types.DriverOptions) (state, error) {
 	for _, part := range labelValues.Value {
 		kv := strings.Split(part, "=")
 		if len(kv) == 2 {
-			d.NodeConfig.Labels[kv[0]] = kv[1]
+			d.NodeConfig.Labels[strings.ToLower(kv[0])] = strings.ToLower(kv[1])
+			d.ResourceLabels[strings.ToLower(kv[0])] = strings.ToLower(kv[1])
 		}
 	}
+
+	d.ResourceLabels["display-name"] = strings.ToLower(d.DisplayName)
+	d.NodeConfig.Labels["display-name"] = strings.ToLower(d.DisplayName)
 
 	d.EnableStackdriverLogging, _ = options.GetValueFromDriverOptions(driverOptions, types.BoolPointerType, "enable-stackdriver-logging", "enableStackdriverLogging").(*bool)
 	d.EnableStackdriverMonitoring, _ = options.GetValueFromDriverOptions(driverOptions, types.BoolPointerType, "enable-stackdriver-monitoring", "enableStackdriverMonitoring").(*bool)
@@ -447,7 +454,8 @@ func (d *Driver) generateClusterCreateRequest(state state) *raw.CreateClusterReq
 		Username: "admin",
 	}
 	request.Cluster.NodeConfig = state.NodeConfig
-	request.Cluster.ResourceLabels = map[string]string{"display-name": strings.ToLower(state.DisplayName)}
+	request.Cluster.ResourceLabels = state.ResourceLabels
+
 	// Stackdriver logging and monitoring default to "on" if no parameter is
 	// passed in.  We must explicitly pass "none" if it isn't wanted
 	if state.EnableStackdriverLogging != nil && !*state.EnableStackdriverLogging {
